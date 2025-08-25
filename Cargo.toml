@@ -2,6 +2,9 @@
 name = "keywatch"
 version = "0.1.0"
 edition = "2024"
+description = "Async channel that coalesces per-key Add/Delete updates with an optional cooldown."
+license = "MIT"
+repository = "https://github.com/davidspies/keywatch"
 
 [dependencies]
 list_ordered_hashmap = "0.1.5"
