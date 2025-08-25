@@ -70,6 +70,13 @@ pub enum Update<V> {
 }
 
 impl<V> Update<V> {
+    pub fn map<W>(self, f: impl FnOnce(V) -> W) -> Update<W> {
+        match self {
+            Update::Add(v) => Update::Add(f(v)),
+            Update::Delete => Update::Delete,
+        }
+    }
+
     pub fn into_option(self) -> Option<V> {
         match self {
             Update::Add(v) => Some(v),
