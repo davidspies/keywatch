@@ -1,0 +1,20 @@
+[package]
+name = "keywatch"
+version = "0.2.0"
+edition = "2024"
+description = "Async channel that coalesces per-key Add/Delete updates with an optional cooldown."
+license = "MIT"
+repository = "https://github.com/davidspies/keywatch"
+
+[dependencies]
+list_ordered_hashmap = "0.1.5"
+parking_lot = "0.12.4"
+tokio = { version = "1.47.1", features = ["macros", "sync", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1.47.1", features = ["rt", "rt-multi-thread"] }
+criterion = { version = "0.7.0", features = ["html_reports", "async_tokio"] }
+
+[[bench]]
+name = "throughput"
+harness = false
