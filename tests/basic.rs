@@ -345,3 +345,26 @@ async fn try_recv_now_returns_pending_non_cooled_add() {
     tokio::time::sleep(Duration::from_millis(220)).await;
     assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
 }
+
+#[tokio::test]
+async fn sender_closed_waits_for_receiver_drop() {
+    // Verify that Sender::closed() does not complete while the receiver is alive, and completes
+    // promptly once the receiver is dropped.
+    let (tx, rx) = channel::<&'static str, i32>(Duration::from_millis(50));
+    let handle = tokio::spawn(async move {
+        tx.closed().await;
+    });
+
+    // Allow some time; closed() should still be pending because channel not dropped yet.
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    assert!(!handle.is_finished(), "Sender::closed() returned before channel was closed");
+
+    // Drop receiver to close the channel; closed() future should now complete.
+    drop(rx);
+
+    // Await the handle with a timeout to ensure it completes promptly.
+    tokio::time::timeout(Duration::from_millis(100), handle)
+        .await
+        .expect("Sender::closed() did not complete after receiver drop")
+        .unwrap();
+}

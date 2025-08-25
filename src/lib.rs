@@ -155,6 +155,20 @@ impl<K: Clone + Eq + Hash, V> Sender<K, V> {
     }
 }
 
+impl<K, V> Sender<K, V> {
+    /// Wait for the channel to be closed.
+    pub async fn closed(&self) {
+        let Channel { inner, changed } = self.0.as_ref();
+        loop {
+            let notified_fut = changed.notified();
+            if inner.lock().dropped {
+                return;
+            }
+            notified_fut.await;
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SendError<V>(pub Update<V>);
 
