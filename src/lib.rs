@@ -187,7 +187,7 @@ impl<K: Clone + Eq + Hash, V> Receiver<K, V> {
                     return Some(received);
                 }
                 if *dropped {
-                    return None;
+                    return raw.try_recv_now();
                 }
                 raw.wait_next_cooldown()
             };
@@ -204,17 +204,16 @@ impl<K: Clone + Eq + Hash, V> Receiver<K, V> {
         let Inner { raw, dropped } = &mut *inner;
         match raw.try_recv() {
             Some(output) => Ok(output),
-            None => Err(TryRecvError::from_dropped(*dropped)),
-        }
-    }
-
-    /// Attempt to receive the next update, _ignoring_ cooldowns.
-    pub fn try_recv_now(&mut self) -> Result<(K, Update<V>), TryRecvError> {
-        let mut inner = self.0.inner.lock();
-        let Inner { raw, dropped } = &mut *inner;
-        match raw.try_recv_now() {
-            Some(output) => Ok(output),
-            None => Err(TryRecvError::from_dropped(*dropped)),
+            None => {
+                if *dropped {
+                    match raw.try_recv_now() {
+                        Some(received) => Ok(received),
+                        None => Err(TryRecvError::Disconnected),
+                    }
+                } else {
+                    Err(TryRecvError::Empty)
+                }
+            }
         }
     }
 }
@@ -223,16 +222,6 @@ impl<K: Clone + Eq + Hash, V> Receiver<K, V> {
 pub enum TryRecvError {
     Disconnected,
     Empty,
-}
-
-impl TryRecvError {
-    fn from_dropped(dropped: bool) -> Self {
-        if dropped {
-            Self::Disconnected
-        } else {
-            Self::Empty
-        }
-    }
 }
 
 impl<K, V> Drop for Sender<K, V> {

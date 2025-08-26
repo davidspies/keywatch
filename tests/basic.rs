@@ -269,7 +269,11 @@ async fn recv_wakes_on_clear() {
     let elapsed = start.elapsed();
     assert_eq!(out, Some(("k", Update::Delete)));
     // Should wake well before cooldown window.
-    assert!(elapsed < cooldown / 10, "recv waited too long for clear notification: {:?}", elapsed);
+    assert!(
+        elapsed < cooldown / 10,
+        "recv waited too long for clear notification: {:?}",
+        elapsed
+    );
 }
 
 #[tokio::test]
@@ -313,37 +317,35 @@ async fn starting_key_delete_emitted_unknown_key_delete_suppressed() {
 }
 
 #[tokio::test]
-async fn try_recv_now_bypasses_cooldown() {
+async fn dropped_sender_ignores_cooldown_for_pending_value() {
+    // After sender dropped, a value sitting in cooldown becomes immediately available via try_recv.
     let cooldown = Duration::from_millis(150);
     let (tx, mut rx) = channel::<&'static str, i32>(cooldown);
     tx.send("k", Update::Add(1)).unwrap();
     assert_eq!(rx.recv().await, Some(("k", Update::Add(1))));
-    // Send replacement during cooldown (value stored in cooldown slot, not yet observable).
+    // Replacement enters cooldown window.
     tx.send("k", Update::Add(2)).unwrap();
-    // Normal try_recv cannot see it yet due to cooldown.
+    // Not yet matured.
     assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
-    // Bypass cooldown: should release the cooled value early.
-    assert_eq!(rx.try_recv_now().unwrap(), ("k", Update::Add(2)));
-    // Subsequent tries are empty until another send.
-    assert!(matches!(rx.try_recv_now(), Err(TryRecvError::Empty)));
-    // Wait past original cooldown to ensure it doesn't reappear.
-    tokio::time::sleep(Duration::from_millis(170)).await;
-    assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+    // Drop sender; cooldown should now be ignored and pending value emitted.
+    drop(tx);
+    assert_eq!(rx.try_recv().unwrap(), ("k", Update::Add(2)));
+    // Subsequent try_recv should report Disconnected (channel closed, no more values).
+    assert!(matches!(rx.try_recv(), Err(TryRecvError::Disconnected)));
 }
 
 #[tokio::test]
-async fn try_recv_now_returns_pending_non_cooled_add() {
-    // Scenario: An Add not yet received (so not in cooldown cycle) should be retrievable via try_recv_now.
+async fn dropped_sender_releases_initial_pending_add() {
+    // An Add not yet received becomes available immediately after sender drop.
     let cooldown = Duration::from_millis(200);
     let (tx, mut rx) = channel::<&'static str, i32>(cooldown);
     tx.send("k", Update::Add(10)).unwrap();
-    // Use try_recv_now instead of recv/try_recv; should return the Add immediately.
-    assert_eq!(rx.try_recv_now().unwrap(), ("k", Update::Add(10)));
-    // Nothing else is pending; no replacement value has been sent yet.
-    assert!(matches!(rx.try_recv_now(), Err(TryRecvError::Empty)));
-    // After cooldown elapses without a replacement Add, nothing new appears.
-    tokio::time::sleep(Duration::from_millis(220)).await;
-    assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+    // Drop sender before receiver consumes first Add.
+    drop(tx);
+    // try_recv should now succeed even though we never called recv() before.
+    assert_eq!(rx.try_recv().unwrap(), ("k", Update::Add(10)));
+    // Further calls report Disconnected.
+    assert!(matches!(rx.try_recv(), Err(TryRecvError::Disconnected)));
 }
 
 #[tokio::test]
@@ -357,7 +359,10 @@ async fn sender_closed_waits_for_receiver_drop() {
 
     // Allow some time; closed() should still be pending because channel not dropped yet.
     tokio::time::sleep(Duration::from_millis(30)).await;
-    assert!(!handle.is_finished(), "Sender::closed() returned before channel was closed");
+    assert!(
+        !handle.is_finished(),
+        "Sender::closed() returned before channel was closed"
+    );
 
     // Drop receiver to close the channel; closed() future should now complete.
     drop(rx);

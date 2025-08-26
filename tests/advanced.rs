@@ -176,22 +176,25 @@ async fn multiple_clears_idempotent_pending_deletes() {
     assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
 }
 
-// 10. Drop sender while receiver waiting on cooldown causes recv to return None early
+// 10. Drop sender while receiver waiting on cooldown causes pending value to be emitted immediately
 #[tokio::test]
-async fn drop_sender_while_waiting_on_cooldown_returns_none() {
+async fn drop_sender_while_waiting_on_cooldown_returns_value_then_none() {
     let cooldown = Duration::from_millis(200);
     let (tx, mut rx) = channel::<&'static str, i32>(cooldown);
     tx.send("k", Update::Add(1)).unwrap();
     assert_eq!(rx.recv().await, Some(("k", Update::Add(1))));
     tx.send("k", Update::Add(2)).unwrap(); // enters cooldown
-    let mut rx2 = rx; // move into spawned task
-    let handle = tokio::spawn(async move { rx2.recv().await });
+    // move into spawned task
+    let handle = tokio::spawn(async move { (rx.recv().await, rx) });
     // Drop sender before cooldown expires
     tokio::time::sleep(Duration::from_millis(50)).await;
     drop(tx);
-    let result = handle.await.unwrap();
+    let (result, mut rx) = handle.await.unwrap();
     assert_eq!(
-        result, None,
-        "Expected None due to sender drop before cooldown maturation"
+        result,
+        Some(("k", Update::Add(2))),
+        "Expected cooled value to be delivered early after sender drop"
     );
+    // Further recv after cooled value drained should now return None
+    assert!(matches!(rx.try_recv(), Err(TryRecvError::Disconnected)));
 }
