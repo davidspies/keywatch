@@ -1,8 +1,12 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-use keywatch::channel_with_starting_keys;
-use keywatch::{TryRecvError, Update, channel};
+use keywatch::{TryRecvError, Update};
+
+#[cfg(feature = "parking_lot")]
+use keywatch::parking_lot::{channel, channel_with_starting_keys};
+#[cfg(not(feature = "parking_lot"))]
+use keywatch::{channel, channel_with_starting_keys};
 
 #[tokio::test]
 async fn add_and_recv_basic() {

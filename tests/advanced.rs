@@ -1,7 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use keywatch::{TryRecvError, Update, channel};
+use keywatch::{TryRecvError, Update};
+
+#[cfg(not(feature = "parking_lot"))]
+use keywatch::channel;
+#[cfg(feature = "parking_lot")]
+use keywatch::parking_lot::channel;
 
 // 1. Re-add after Delete during cooldown
 #[tokio::test]

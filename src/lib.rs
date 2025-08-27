@@ -52,14 +52,39 @@
 //! # }
 //! ```
 
-use std::{collections::HashSet, hash::Hash, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    hash::Hash,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
-use parking_lot::Mutex;
 use tokio::{select, sync::Notify};
 
-use crate::raw::Raw;
+use crate::{mutex::MutexT, raw::Raw};
 
 mod raw;
+
+pub mod mutex;
+
+#[cfg(feature = "parking_lot")]
+pub mod parking_lot {
+    use std::{collections::HashSet, time::Duration};
+
+    pub type Sender<K, V> = crate::Sender<K, V, ::parking_lot::Mutex<crate::Inner<K, V>>>;
+    pub type Receiver<K, V> = crate::Receiver<K, V, ::parking_lot::Mutex<crate::Inner<K, V>>>;
+
+    pub fn channel<K, V>(cooldown: Duration) -> (Sender<K, V>, Receiver<K, V>) {
+        crate::channel_helper(HashSet::new(), cooldown)
+    }
+
+    pub fn channel_with_starting_keys<K, V>(
+        starting_keys: HashSet<K>,
+        cooldown: Duration,
+    ) -> (Sender<K, V>, Receiver<K, V>) {
+        crate::channel_helper(starting_keys, cooldown)
+    }
+}
 
 /// A change notification for a key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -88,7 +113,7 @@ impl<V> Update<V> {
 
 /// Create a channel with an empty initial key set and specified Add cooldown duration.
 pub fn channel<K, V>(cooldown: Duration) -> (Sender<K, V>, Receiver<K, V>) {
-    channel_with_starting_keys(HashSet::new(), cooldown)
+    channel_helper(HashSet::new(), cooldown)
 }
 
 /// Create a channel specifying keys the receiver is assumed to already possess.
@@ -99,8 +124,15 @@ pub fn channel_with_starting_keys<K, V>(
     starting_keys: HashSet<K>,
     cooldown: Duration,
 ) -> (Sender<K, V>, Receiver<K, V>) {
+    channel_helper(starting_keys, cooldown)
+}
+
+fn channel_helper<K, V, M: MutexT<T = Inner<K, V>>>(
+    starting_keys: HashSet<K>,
+    cooldown: Duration,
+) -> (Sender<K, V, M>, Receiver<K, V, M>) {
     let channel = Arc::new(Channel {
-        inner: Mutex::new(Inner {
+        inner: M::new(Inner {
             raw: Raw::new(starting_keys, cooldown),
             dropped: false,
         }),
@@ -109,19 +141,19 @@ pub fn channel_with_starting_keys<K, V>(
     (Sender(Arc::clone(&channel)), Receiver(channel))
 }
 
-struct Channel<K, V> {
-    inner: Mutex<Inner<K, V>>,
+struct Channel<M> {
+    inner: M,
     changed: Notify,
 }
 
-struct Inner<K, V> {
+pub struct Inner<K, V> {
     raw: Raw<K, V>,
     dropped: bool,
 }
 
-pub struct Sender<K, V>(Arc<Channel<K, V>>);
+pub struct Sender<K, V, M: MutexT<T = Inner<K, V>> = Mutex<Inner<K, V>>>(Arc<Channel<M>>);
 
-impl<K: Clone + Eq + Hash, V> Sender<K, V> {
+impl<K: Clone + Eq + Hash, V, M: MutexT<T = Inner<K, V>>> Sender<K, V, M> {
     /// Send an Add or Delete for the key.
     ///
     /// Returns `Err(SendError(original_update))` if the channel is disconnected.
@@ -156,7 +188,7 @@ impl<K: Clone + Eq + Hash, V> Sender<K, V> {
     }
 }
 
-impl<K, V> Sender<K, V> {
+impl<K, V, M: MutexT<T = Inner<K, V>>> Sender<K, V, M> {
     /// Wait for the channel to be closed.
     pub async fn closed(&self) {
         let Channel { inner, changed } = self.0.as_ref();
@@ -173,9 +205,9 @@ impl<K, V> Sender<K, V> {
 #[derive(Debug)]
 pub struct SendError<V>(pub Update<V>);
 
-pub struct Receiver<K, V>(Arc<Channel<K, V>>);
+pub struct Receiver<K, V, M: MutexT<T = Inner<K, V>> = Mutex<Inner<K, V>>>(Arc<Channel<M>>);
 
-impl<K: Clone + Eq + Hash, V> Receiver<K, V> {
+impl<K: Clone + Eq + Hash, V, M: MutexT<T = Inner<K, V>>> Receiver<K, V, M> {
     /// Await the next update; returns `None` when channel is fully disconnected and drained.
     pub async fn recv(&mut self) -> Option<(K, Update<V>)> {
         let Channel { inner, changed } = self.0.as_ref();
@@ -225,7 +257,7 @@ pub enum TryRecvError {
     Empty,
 }
 
-impl<K, V> Drop for Sender<K, V> {
+impl<K, V, M: MutexT<T = Inner<K, V>>> Drop for Sender<K, V, M> {
     fn drop(&mut self) {
         let Channel { inner, changed } = self.0.as_ref();
         inner.lock().dropped = true;
@@ -233,7 +265,7 @@ impl<K, V> Drop for Sender<K, V> {
     }
 }
 
-impl<K, V> Drop for Receiver<K, V> {
+impl<K, V, M: MutexT<T = Inner<K, V>>> Drop for Receiver<K, V, M> {
     fn drop(&mut self) {
         let Channel { inner, changed } = self.0.as_ref();
         inner.lock().dropped = true;
