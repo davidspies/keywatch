@@ -282,8 +282,7 @@ async fn send_fails_after_receiver_drop() {
     drop(rx); // trigger dropped flag
     let err = tx
         .send("k", Update::Add(42))
-        .err()
-        .expect("expected send error");
+        .expect_err("expected send error");
     match err.0 {
         Update::Add(v) => assert_eq!(v, 42),
         other => panic!("unexpected update in error: {:?}", other),
@@ -294,7 +293,7 @@ async fn send_fails_after_receiver_drop() {
 async fn clear_fails_after_receiver_drop() {
     let (tx, rx) = channel::<&'static str, i32>(Duration::ZERO);
     drop(rx);
-    let err = tx.clear().err().expect("expected clear error");
+    let err = tx.clear().expect_err("expected clear error");
     match err.0 {
         Update::Delete => {}
         other => panic!("unexpected update in clear error: {:?}", other),
