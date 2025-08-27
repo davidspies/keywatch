@@ -51,6 +51,7 @@
 //! assert!(elapsed >= cooldown);
 //! # }
 //! ```
+
 use std::{collections::HashSet, hash::Hash, sync::Arc, time::Duration};
 
 use parking_lot::Mutex;
@@ -60,8 +61,8 @@ use crate::raw::Raw;
 
 mod raw;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// A change notification for a key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Update<V> {
     /// Insert / upsert value for the key.
     Add(V),
