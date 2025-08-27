@@ -54,8 +54,12 @@
 
 use std::{collections::HashSet, hash::Hash, sync::Arc, time::Duration};
 
-use parking_lot::Mutex;
 use tokio::{select, sync::Notify};
+
+#[cfg(feature = "parking_lot")]
+use parking_lot::{Mutex, MutexGuard};
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::{Mutex, MutexGuard};
 
 use crate::raw::Raw;
 
@@ -128,7 +132,7 @@ impl<K: Clone + Eq + Hash, V> Sender<K, V> {
     pub fn send(&self, key: K, update: Update<V>) -> Result<(), SendError<V>> {
         let Channel { inner, changed } = self.0.as_ref();
         let replaced = {
-            let mut inner = inner.lock();
+            let mut inner = lock_mutex(inner);
             let Inner { raw, dropped } = &mut *inner;
             if *dropped {
                 return Err(SendError(update));
@@ -144,7 +148,7 @@ impl<K: Clone + Eq + Hash, V> Sender<K, V> {
     pub fn clear(&self) -> Result<(), SendError<V>> {
         let Channel { inner, changed } = self.0.as_ref();
         {
-            let mut inner = inner.lock();
+            let mut inner = lock_mutex(inner);
             let Inner { raw, dropped } = &mut *inner;
             if *dropped {
                 return Err(SendError(Update::Delete));
@@ -162,7 +166,7 @@ impl<K, V> Sender<K, V> {
         let Channel { inner, changed } = self.0.as_ref();
         loop {
             let notified_fut = changed.notified();
-            if inner.lock().dropped {
+            if lock_mutex(inner).dropped {
                 return;
             }
             notified_fut.await;
@@ -182,7 +186,7 @@ impl<K: Clone + Eq + Hash, V> Receiver<K, V> {
         loop {
             let notified_fut = changed.notified();
             let next_cooldown = {
-                let mut inner = inner.lock();
+                let mut inner = lock_mutex(inner);
                 let Inner { raw, dropped } = &mut *inner;
                 if let Some(received) = raw.try_recv() {
                     return Some(received);
@@ -201,7 +205,7 @@ impl<K: Clone + Eq + Hash, V> Receiver<K, V> {
 
     /// Non-blocking receive attempt.
     pub fn try_recv(&mut self) -> Result<(K, Update<V>), TryRecvError> {
-        let mut inner = self.0.inner.lock();
+        let mut inner = lock_mutex(&self.0.inner);
         let Inner { raw, dropped } = &mut *inner;
         match raw.try_recv() {
             Some(output) => Ok(output),
@@ -228,7 +232,7 @@ pub enum TryRecvError {
 impl<K, V> Drop for Sender<K, V> {
     fn drop(&mut self) {
         let Channel { inner, changed } = self.0.as_ref();
-        inner.lock().dropped = true;
+        lock_mutex(inner).dropped = true;
         changed.notify_waiters();
     }
 }
@@ -236,7 +240,20 @@ impl<K, V> Drop for Sender<K, V> {
 impl<K, V> Drop for Receiver<K, V> {
     fn drop(&mut self) {
         let Channel { inner, changed } = self.0.as_ref();
-        inner.lock().dropped = true;
+        lock_mutex(inner).dropped = true;
         changed.notify_waiters();
     }
+}
+
+#[cfg(not(feature = "parking_lot"))]
+#[inline]
+#[track_caller]
+fn lock_mutex<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap()
+}
+
+#[cfg(feature = "parking_lot")]
+#[inline]
+fn lock_mutex<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock()
 }

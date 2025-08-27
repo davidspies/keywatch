@@ -8,8 +8,12 @@ repository = "https://github.com/davidspies/keywatch"
 
 [dependencies]
 list_ordered_hashmap = "0.1.5"
-parking_lot = "0.12.4"
 tokio = { version = "1.47.1", features = ["macros", "sync", "time"] }
+
+parking_lot = { version = "0.12.4", optional = true }
+
+[features]
+parking_lot = ["dep:parking_lot"]
 
 [dev-dependencies]
 tokio = { version = "1.47.1", features = ["rt", "rt-multi-thread"] }
