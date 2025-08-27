@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "keywatch"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "criterion",
  "list_ordered_hashmap",

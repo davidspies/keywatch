@@ -1,6 +1,6 @@
 [package]
 name = "keywatch"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Async channel that coalesces per-key Add/Delete updates with an optional cooldown."
 license = "MIT"
