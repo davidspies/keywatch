@@ -235,9 +235,9 @@ dependencies = [
 
 [[package]]
 name = "index_list"
-version = "0.2.16"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f05caee923b644542e92a659bfceb868a4053fb7d4230ef2141931e8b01e91a"
+checksum = "5ed5081b1b06f52b85a18d364ce08a3f94424b0187aecd40c2e0d45e84e9309a"
 
 [[package]]
 name = "io-uring"
@@ -293,9 +293,9 @@ checksum = "6a82ae493e598baaea5209805c49bbf2ea7de956d50d7da0da1164f9c6d28543"
 
 [[package]]
 name = "list_ordered_hashmap"
-version = "0.1.5"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aca55e9a4291b3f136f11aad733049718d04a35b84af6ca125c5959af378c196"
+checksum = "46f176ee9dcc30ada29c242f7a39fbebc6003e87c1bad8b8e8c404035df26291"
 dependencies = [
  "derive-where",
  "index_list",

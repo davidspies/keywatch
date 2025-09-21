@@ -83,7 +83,9 @@ impl<K: Clone + Eq + Hash, V> Raw<K, V> {
             }
             cooldown_keys.pop_front();
         }
-        cooldown_keys.for_each_mut(|_, (_, v)| *v = None);
+        for (_, (_, v)) in cooldown_keys.iter_mut() {
+            *v = None;
+        }
         pending_updates.clear();
         for k in keys_receiver_has.iter() {
             pending_updates.insert(k.clone(), Update::Delete);
